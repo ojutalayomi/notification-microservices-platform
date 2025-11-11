@@ -2,10 +2,20 @@ import { Module } from "@nestjs/common";
 import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
 import { ConfigModule } from "@nestjs/config";
+import { UserModule } from "./user/user.module";
+import { HealthModule } from "./health/health.module";
+import { APP_INTERCEPTOR } from "@nestjs/core";
+import { ResponseInterceptor } from "./common/interceptors/response.interceptor";
 
 @Module({
-  imports: [ConfigModule.forRoot()],
+  imports: [ConfigModule.forRoot(), UserModule, HealthModule],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: ResponseInterceptor,
+    },
+  ],
 })
 export class AppModule {}

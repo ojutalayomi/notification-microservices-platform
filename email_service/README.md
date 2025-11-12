@@ -1,36 +1,21 @@
-# Email Service - Basic Version
+# Email Service
 
-A simple email notification service that queues and sends emails.
+An email notification service that queues and sends emails.
 
 ## What This Does
 
 1. **API receives email request** → Saves to database + Adds to queue
 2. **Worker picks from queue** → Sends email via SMTP
 3. **Database tracks status** → queued → processing → sent/failed
+4. **Extensible**: Works with template service or orchestrators for dynamic email content.
 
-## File Structure
-
-```
-email-service/
-├── .env                  # Configuration (SMTP, database)
-├── requirements.txt      # Python dependencies
-├── docker-compose.yml    # Runs PostgreSQL + RabbitMQ
-├── Dockerfile           # For deployment
-├── main.py              # FastAPI app (API endpoints)
-├── worker.py            # Processes emails from queue
-├── models.py            # Database table (EmailMessage)
-├── schemas.py           # Request/Response formats
-├── db.py                # Database connection
-├── queue.py             # RabbitMQ setup
-└── smtp_service.py      # Sends emails via SMTP
-```
 
 ## Setup Instructions
 
 ### Step 1: Install Dependencies
 
 ```bash
-# Create virtual environment (optional but recommended)
+# Create virtual environment 
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
@@ -50,12 +35,6 @@ SMTP_USER=your-email@gmail.com
 SMTP_PASS=your-app-password
 EMAIL_SENDER=noreply@yourapp.com
 
-# Or use Mailtrap for testing (fake SMTP)
-# SMTP_HOST=smtp.mailtrap.io
-# SMTP_PORT=2525
-# SMTP_USER=your-mailtrap-user
-# SMTP_PASS=your-mailtrap-pass
-```
 
 **How to get Gmail App Password:**
 1. Go to Google Account → Security
@@ -141,7 +120,7 @@ Go to http://localhost:15672 (guest/guest) and see:
 
 ## Understanding the Flow
 
-### When you send POST /internal/email/queue
+### When you send POST /email/queue
 
 **File: main.py**
 ```python

@@ -1,6 +1,7 @@
 import { Body, Post, Query, Controller, Get, Param } from '@nestjs/common';
 import { TemplatesService } from './templates.service';
 import { CreateTemplateDto } from './dto/create-template.dto';
+import { RenderTemplateDto } from './dto/render-template.dto';
 
 @Controller('templates')
 export class TemplatesController {
@@ -13,6 +14,16 @@ export class TemplatesController {
       success: true,
       data,
       message: 'Template fetched successfully',
+    };
+  }
+
+  @Post('render')
+  async render(@Body() dto: RenderTemplateDto) {
+    const data = await this.service.render(dto);
+    return {
+      success: true,
+      data,
+      message: 'Template rendered successfully',
     };
   }
 

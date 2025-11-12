@@ -1,7 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateTemplateDto } from './dto/create-template.dto';
 import { Template } from 'generated/prisma';
+import { RenderTemplateDto } from './dto/render-template.dto';
 
 export interface PaginationMeta {
   total: number;
@@ -71,6 +76,42 @@ export class TemplatesService {
         has_next: page < total_pages,
         has_previous: page > 1,
       },
+    };
+  }
+
+  async render(dto: RenderTemplateDto): Promise<{
+    subject: string;
+    html_body: string;
+    text_body?: string;
+  }> {
+    const template: Template | null = await this.prisma.template.findUnique({
+      where: { id: dto.template_id, is_active: true },
+    });
+
+    if (!template) {
+      throw new NotFoundException('Active template not found');
+    }
+
+    const missing = template.variables.filter((v) => !(v in dto.variables));
+    if (missing.length > 0) {
+      throw new BadRequestException(`Missing variables: ${missing.join(', ')}`);
+    }
+
+    let subject = template.subject;
+    let html_body = template.html_body;
+    let text_body = template.text_body;
+
+    for (const [key, value] of Object.entries(dto.variables)) {
+      const regex = new RegExp(`{{${key}}}`, 'g');
+      subject = subject.replace(regex, value);
+      html_body = html_body.replace(regex, value);
+      if (text_body) text_body = text_body.replace(regex, value);
+    }
+
+    return {
+      subject,
+      html_body,
+      text_body: text_body || undefined,
     };
   }
 }

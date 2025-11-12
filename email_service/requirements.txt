@@ -8,3 +8,4 @@ sqlalchemy
 pydantic
 pydantic[email]
 python-dotenv
+pybreaker

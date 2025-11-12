@@ -56,35 +56,34 @@ def queue_email(email: EmailCreate, db: Session = Depends(get_db)):
             status=EmailStatus.queued,
             created_at=datetime.utcnow()
         )
-        
-        
+
         db.add(new_email)
         db.commit()
         db.refresh(new_email)
-        
+
         print(f"[api] Email saved to DB: {new_email.id}")
-        
-        
+
+        # Publish to queue
         publish_email_job({
             "email_id": str(new_email.id),
             "to_email": new_email.to_email,
             "subject": new_email.subject,
             "body": new_email.body
         })
-        
-        
+
+        # Return response based on DB object (not request object!)
         return StandardResponse(
             success=True,
-            data = EmailResponse.model_validate(email, from_attributes=True)
-,
+            data=EmailResponse.model_validate(new_email, from_attributes=True),
             message="Email queued successfully"
         )
-        
+
     except Exception as e:
         db.rollback()
         print(f"[api] Error queueing email: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
-
+    
+    
 @app.get("/email/{email_id}", response_model=StandardResponse)
 def get_email_status(email_id: str, db: Session = Depends(get_db)):
     """

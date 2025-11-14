@@ -71,7 +71,7 @@ python worker.py
 
 You should see:
 ```
-[worker] Listening to queue: email_queue
+[worker] Listening to queue: email.queue
 [worker] Waiting for emails...
 ```
 
@@ -114,7 +114,7 @@ curl -X POST http://localhost:8000/internal/email/queue \
 ### Check RabbitMQ UI
 
 Go to http://localhost:15672 (guest/guest) and see:
-- Queues → `email_queue`
+- Queues → `email.queue`
 - Message rates
 - Messages waiting
 

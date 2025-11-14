@@ -1,0 +1,211 @@
+version: "3.9"
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: hng-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 90s
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+  user-db:
+    image: postgres:16-alpine
+    container_name: hng-user-db
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: user_service
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - user_db_data:/var/lib/postgresql/data
+
+  template-db:
+    image: postgres:16-alpine
+    container_name: hng-template-db
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_DB: template_service
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - template_db_data:/var/lib/postgresql/data
+
+  push-db:
+    image: postgres:16-alpine
+    container_name: hng-push-db
+    ports:
+      - "5435:5432"
+    environment:
+      POSTGRES_DB: push_service
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - push_db_data:/var/lib/postgresql/data
+      - ./push-service/migrations:/docker-entrypoint-initdb.d
+
+  redis:
+    image: redis:7-alpine
+    container_name: hng-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - redis_data:/data
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+    container_name: hng-api-gateway
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      USER_SERVICE_URL: http://user-service:3001/api/v1
+      TEMPLATE_SERVICE_URL: http://template-service:4000/api/v1
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      user-service:
+        condition: service_started
+      template-service:
+        condition: service_started
+
+  user-service:
+    build:
+      context: ./user-service
+    container_name: hng-user-service
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: 3001
+      DATABASE_URL: postgresql://postgres:postgres@user-db:5432/user_service?schema=public
+    depends_on:
+      user-db:
+        condition: service_healthy
+
+  template-service:
+    build:
+      context: ./template-service
+    container_name: hng-template-service
+    ports:
+      - "4000:4000"
+    environment:
+      PORT: 4000
+      DATABASE_URL: postgresql://postgres:postgres@template-db:5432/template_service?schema=public
+    depends_on:
+      template-db:
+        condition: service_healthy
+
+  email-service:
+    build:
+      context: ./email_service
+    container_name: hng-email-service
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@email-db:5432/email_service
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      email-db:
+        condition: service_healthy
+
+  email-db:
+    image: postgres:16-alpine
+    container_name: hng-email-db
+    ports:
+      - "5436:5432"
+    environment:
+      POSTGRES_DB: email_service
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - email_db_data:/var/lib/postgresql/data
+
+  push-service:
+    build:
+      context: ./push-service
+    container_name: hng-push-service
+    ports:
+      - "8080:8080"
+    environment:
+      SERVER_PORT: 8080
+      DB_HOST: push-db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: push_service
+      DB_SSL_MODE: disable
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: guest
+      RABBITMQ_PASSWORD: guest
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      FCM_USE_FILE: "true"
+      FCM_CREDENTIALS_JSON: /app/service-account.json
+    volumes:
+      - ./push-service/service-account.json:/app/service-account.json:ro
+      - ./push-service/config.yaml:/app/config.yaml:ro
+    depends_on:
+      push-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+networks:
+  default:
+    name: hng-network
+
+volumes:
+  user_db_data:
+  template_db_data:
+  push_db_data:
+  email_db_data:
+  rabbitmq_data:
+  redis_data:
+

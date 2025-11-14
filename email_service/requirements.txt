@@ -1,9 +1,7 @@
-psycopg2
-pydantic[email]
+psycopg2-binary
 pika
 fastapi
 uvicorn
-psycopg2-binary
 sqlalchemy
 pydantic
 pydantic[email]

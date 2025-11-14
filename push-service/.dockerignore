@@ -70,6 +70,7 @@ Dockerfile*
 # Scripts (unless needed)
 scripts/
 *.sh
+!entrypoint.sh
 
 # Swagger generated docs (will be generated in container)
 docs/swagger/

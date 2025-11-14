@@ -41,6 +41,7 @@ lerna-debug.log*
 **/.env.test.local
 **/.env.production.local
 **/.env.local
+**/.env.production
 
 # temp directory
 .temp
@@ -51,6 +52,11 @@ pids
 *.pid
 *.seed
 *.pid.lock
+
+# Deployment files
+*.pem
+*.key
+backups/
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json

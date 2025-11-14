@@ -1,0 +1,14 @@
+node_modules
+dist
+npm-debug.log
+.npmrc
+.env
+coverage
+Dockerfile
+docker-compose.yml
+.git
+.gitignore
+.cursor
+.vscode
+generated
+

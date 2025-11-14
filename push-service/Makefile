@@ -16,6 +16,8 @@ clean:
 	rm -rf bin/
 
 docker-build:
+	@echo "Building Docker image with BuildKit..."
+	@echo "This may take several minutes on first build due to dependency downloads..."
 	DOCKER_BUILDKIT=1 docker build -t push-service .
 
 docker-run:

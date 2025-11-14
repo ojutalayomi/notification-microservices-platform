@@ -178,13 +178,13 @@ func startPushWorker(rabbitmqClient *rabbitmq.RabbitMQClient, fcmClient fcm.FCMC
 		zap.Int("prefetch_count", cfg.Queue.Worker.PrefetchCount),
 	)
 
-	// Start consuming messages
+	// Start consuming messages from internal queue
 	msgs, err := pushQueue.ConsumePush(ctx)
 	if err != nil {
-		logger.L().Fatal("Failed to start consuming messages", zap.Error(err))
+		logger.L().Fatal("Failed to start consuming messages from internal queue", zap.Error(err))
 	}
 
-	// Process messages in a goroutine
+	// Process internal queue messages in a goroutine
 	go func() {
 		for delivery := range msgs {
 			// Process each message
@@ -196,6 +196,27 @@ func startPushWorker(rabbitmqClient *rabbitmq.RabbitMQClient, fcmClient fcm.FCMC
 			}
 		}
 	}()
+
+	// Start consuming messages from API Gateway queue
+	gatewayMsgs, err := pushQueue.ConsumeFromGateway(ctx)
+	if err != nil {
+		logger.L().Fatal("Failed to start consuming messages from gateway queue", zap.Error(err))
+	}
+
+	// Process gateway messages in a goroutine
+	go func() {
+		for delivery := range gatewayMsgs {
+			// Process each gateway message
+			if err := pushService.ProcessGatewayMessage(ctx, delivery); err != nil {
+				logger.L().Error("Failed to process gateway message",
+					zap.Error(err),
+					zap.Uint64("delivery_tag", delivery.DeliveryTag),
+				)
+			}
+		}
+	}()
+
+	logger.L().Info("Push workers started (internal and gateway queues)")
 
 	// Wait for context cancellation (graceful shutdown)
 	<-ctx.Done()

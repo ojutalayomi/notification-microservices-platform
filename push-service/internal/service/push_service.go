@@ -9,6 +9,7 @@ import (
 	"push-service/internal/platform/fcm"
 	"push-service/internal/queue"
 	"push-service/internal/repository"
+	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go.uber.org/zap"
@@ -18,6 +19,7 @@ type PushService interface {
 	SendPush(ctx context.Context, req models.SendPushRequest) error
 	SendBulkPush(ctx context.Context, req models.BulkPushRequest) error
 	ProcessPushFromQueue(ctx context.Context, delivery amqp.Delivery) error
+	ProcessGatewayMessage(ctx context.Context, delivery amqp.Delivery) error
 	GetQueueStats(ctx context.Context) (map[string]int64, error)
 }
 
@@ -341,6 +343,155 @@ func (s *pushService) ProcessPushFromQueue(ctx context.Context, delivery amqp.De
 // GetQueueStats returns statistics about the push queues
 func (s *pushService) GetQueueStats(ctx context.Context) (map[string]int64, error) {
 	return s.pushQueue.GetQueueStats(ctx)
+}
+
+// ProcessGatewayMessage processes messages from the API Gateway's push.queue
+// API Gateway sends: {notification_id, user_id, push_token, name, template: {subject, body}, ...}
+func (s *pushService) ProcessGatewayMessage(ctx context.Context, delivery amqp.Delivery) error {
+	// Parse API Gateway message format
+	var gatewayMessage map[string]interface{}
+	if err := json.Unmarshal(delivery.Body, &gatewayMessage); err != nil {
+		zap.L().Error("Failed to unmarshal gateway message",
+			zap.Error(err),
+		)
+		// Nack and don't requeue - message is malformed
+		if err := s.pushQueue.GetRabbitMQClient().Nack(delivery.DeliveryTag, false, false); err != nil {
+			zap.L().Error("Failed to nack malformed gateway message", zap.Error(err))
+		}
+		return fmt.Errorf("failed to unmarshal gateway message: %w", err)
+	}
+
+	// Extract data from gateway message
+	notificationID, ok := gatewayMessage["notification_id"].(string)
+	if !ok {
+		zap.L().Error("Missing or invalid notification_id in gateway message")
+		if err := s.pushQueue.GetRabbitMQClient().Nack(delivery.DeliveryTag, false, false); err != nil {
+			zap.L().Error("Failed to nack gateway message", zap.Error(err))
+		}
+		return fmt.Errorf("missing notification_id")
+	}
+
+	userID, ok := gatewayMessage["user_id"].(string)
+	if !ok {
+		zap.L().Error("Missing or invalid user_id in gateway message")
+		if err := s.pushQueue.GetRabbitMQClient().Nack(delivery.DeliveryTag, false, false); err != nil {
+			zap.L().Error("Failed to nack gateway message", zap.Error(err))
+		}
+		return fmt.Errorf("missing user_id")
+	}
+
+	// Get template (may be nil)
+	var template map[string]interface{}
+	if templateVal, ok := gatewayMessage["template"]; ok {
+		if templateMap, ok := templateVal.(map[string]interface{}); ok {
+			template = templateMap
+		}
+	}
+
+	// Extract title and body from template
+	title := "Notification"
+	body := "You have a new notification"
+	if template != nil {
+		if subject, ok := template["subject"].(string); ok && subject != "" {
+			title = subject
+		}
+		if bodyContent, ok := template["body"].(string); ok && bodyContent != "" {
+			body = bodyContent
+		}
+	}
+
+	// Get device tokens from database
+	devices, err := s.deviceRepo.GetByUserID(ctx, userID)
+	if err != nil {
+		zap.L().Warn("Failed to get devices from database, using push_token fallback",
+			zap.String("user_id", userID),
+			zap.Error(err),
+		)
+	}
+
+	var deviceTokens []string
+	if len(devices) > 0 {
+		// Use tokens from database
+		deviceTokens = make([]string, len(devices))
+		for i, device := range devices {
+			deviceTokens[i] = device.Token
+		}
+		zap.L().Info("Using device tokens from database",
+			zap.String("user_id", userID),
+			zap.Int("device_count", len(deviceTokens)),
+		)
+	} else {
+		// Fallback to push_token from gateway message
+		if pushToken, ok := gatewayMessage["push_token"].(string); ok && pushToken != "" {
+			deviceTokens = []string{pushToken}
+			zap.L().Info("Using push_token from gateway message",
+				zap.String("user_id", userID),
+			)
+		} else {
+			zap.L().Warn("No devices found and no push_token provided",
+				zap.String("user_id", userID),
+				zap.String("notification_id", notificationID),
+			)
+			// Ack the message since we can't process it
+			if err := s.pushQueue.GetRabbitMQClient().Ack(delivery.DeliveryTag, false); err != nil {
+				zap.L().Error("Failed to ack gateway message", zap.Error(err))
+			}
+			return fmt.Errorf("no device tokens available for user: %s", userID)
+		}
+	}
+
+	// Extract data if present
+	var data map[string]interface{}
+	if dataVal, ok := gatewayMessage["data"]; ok {
+		if dataMap, ok := dataVal.(map[string]interface{}); ok {
+			data = dataMap
+		}
+	}
+
+	// Create notification
+	notification := models.PushNotification{
+		ID:        notificationID,
+		UserID:    userID,
+		Title:     title,
+		Body:      body,
+		Data:      data,
+		Status:    "queued",
+		CreatedAt: time.Now(),
+	}
+
+	zap.L().Info("Processing gateway push message",
+		zap.String("notification_id", notificationID),
+		zap.String("user_id", userID),
+		zap.Int("device_count", len(deviceTokens)),
+		zap.String("title", title),
+	)
+
+	// Enqueue to internal push queue for processing
+	if err := s.pushQueue.EnqueuePush(ctx, notification, deviceTokens); err != nil {
+		zap.L().Error("Failed to enqueue push from gateway",
+			zap.String("notification_id", notificationID),
+			zap.String("user_id", userID),
+			zap.Error(err),
+		)
+		// Nack and requeue
+		if err := s.pushQueue.GetRabbitMQClient().Nack(delivery.DeliveryTag, false, true); err != nil {
+			zap.L().Error("Failed to nack gateway message", zap.Error(err))
+		}
+		return fmt.Errorf("failed to enqueue push: %w", err)
+	}
+
+	// Ack the gateway message
+	if err := s.pushQueue.GetRabbitMQClient().Ack(delivery.DeliveryTag, false); err != nil {
+		zap.L().Error("Failed to ack gateway message", zap.Error(err))
+		return err
+	}
+
+	zap.L().Info("Gateway push message enqueued successfully",
+		zap.String("notification_id", notificationID),
+		zap.String("user_id", userID),
+	)
+
+	return nil
 }
 
 func (s *pushService) SendDirect(ctx context.Context, token string, notification models.PushNotification) error {

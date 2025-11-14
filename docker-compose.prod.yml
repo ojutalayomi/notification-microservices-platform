@@ -1,0 +1,259 @@
+version: "3.9"
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: hng-rabbitmq
+    ports:
+      - "127.0.0.1:5672:5672"  # Only accessible from localhost
+      - "127.0.0.1:15672:15672"  # Management UI only on localhost
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 90s
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    restart: unless-stopped
+    networks:
+      - hng-network
+
+  user-db:
+    image: postgres:16-alpine
+    container_name: hng-user-db
+    ports:
+      - "127.0.0.1:5433:5432"  # Only accessible from localhost
+    environment:
+      POSTGRES_DB: user_service
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - user_db_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - hng-network
+
+  template-db:
+    image: postgres:16-alpine
+    container_name: hng-template-db
+    ports:
+      - "127.0.0.1:5434:5432"  # Only accessible from localhost
+    environment:
+      POSTGRES_DB: template_service
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - template_db_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - hng-network
+
+  push-db:
+    image: postgres:16-alpine
+    container_name: hng-push-db
+    ports:
+      - "127.0.0.1:5435:5432"  # Only accessible from localhost
+    environment:
+      POSTGRES_DB: push_service
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - push_db_data:/var/lib/postgresql/data
+      - ./push-service/migrations:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+    networks:
+      - hng-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: hng-redis
+    ports:
+      - "127.0.0.1:6379:6379"  # Only accessible from localhost
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--save", "60", "1000", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - hng-network
+
+  email-db:
+    image: postgres:16-alpine
+    container_name: hng-email-db
+    ports:
+      - "127.0.0.1:5436:5432"  # Only accessible from localhost
+    environment:
+      POSTGRES_DB: email_service
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - email_db_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - hng-network
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: hng-api-gateway
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      USER_SERVICE_URL: http://user-service:3001/api/v1
+      TEMPLATE_SERVICE_URL: http://template-service:4000/api/v1
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-admin}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      user-service:
+        condition: service_started
+      template-service:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - hng-network
+
+  user-service:
+    build:
+      context: ./user-service
+      dockerfile: Dockerfile
+    container_name: hng-user-service
+    ports:
+      - "127.0.0.1:3001:3001"  # Only accessible from localhost
+    environment:
+      PORT: 3001
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@user-db:5432/user_service?schema=public
+    depends_on:
+      user-db:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - hng-network
+
+  template-service:
+    build:
+      context: ./template-service
+      dockerfile: Dockerfile
+    container_name: hng-template-service
+    ports:
+      - "127.0.0.1:4000:4000"  # Only accessible from localhost
+    environment:
+      PORT: 4000
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@template-db:5432/template_service?schema=public
+    depends_on:
+      template-db:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - hng-network
+
+  email-service:
+    build:
+      context: ./email_service
+      dockerfile: Dockerfile
+    container_name: hng-email-service
+    ports:
+      - "127.0.0.1:8000:8000"  # Only accessible from localhost
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@email-db:5432/email_service
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-admin}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      EMAIL_SENDER: ${EMAIL_SENDER}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      email-db:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - hng-network
+
+  push-service:
+    build:
+      context: ./push-service
+      dockerfile: Dockerfile
+    container_name: hng-push-service
+    ports:
+      - "127.0.0.1:8080:8080"  # Only accessible from localhost
+    environment:
+      SERVER_PORT: 8080
+      SERVER_MODE: release
+      DB_HOST: push-db
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: push_service
+      DB_SSL_MODE: disable
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: ${RABBITMQ_USER:-admin}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_DB: 0
+      FCM_USE_FILE: "true"
+      FCM_CREDENTIALS_JSON: /app/service-account.json
+    volumes:
+      - ./push-service/service-account.json:/app/service-account.json:ro
+      - ./push-service/config.yaml:/app/config.yaml:ro
+    depends_on:
+      push-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - hng-network
+
+networks:
+  default:
+    name: hng-network
+    driver: bridge
+
+volumes:
+  user_db_data:
+  template_db_data:
+  push_db_data:
+  email_db_data:
+  rabbitmq_data:
+  redis_data:
+

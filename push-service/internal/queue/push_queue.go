@@ -12,11 +12,13 @@ import (
 )
 
 const (
-	PushExchangeName   = "push_exchange"
-	PushQueueName      = "push_notifications"
-	RetryQueueName     = "push_retries"
-	DeadLetterQueue    = "push_dead_letters"
-	DeadLetterExchange = "push_dlx"
+	PushExchangeName     = "push_exchange"
+	PushQueueName        = "push_notifications"
+	RetryQueueName       = "push_retries"
+	DeadLetterQueue      = "push_dead_letters"
+	DeadLetterExchange   = "push_dlx"
+	GatewayPushQueueName = "push.queue"
+	GatewayExchangeName  = "notifications.direct"
 )
 
 type PushQueue struct {
@@ -173,4 +175,34 @@ func (q *PushQueue) GetQueueStats(ctx context.Context) (map[string]int64, error)
 // GetRabbitMQClient returns the underlying RabbitMQ client for ack/nack operations
 func (q *PushQueue) GetRabbitMQClient() *rabbitmq.RabbitMQClient {
 	return q.rabbitmqClient
+}
+
+// ConsumeFromGateway consumes messages from the API Gateway's push.queue
+func (q *PushQueue) ConsumeFromGateway(ctx context.Context) (<-chan amqp.Delivery, error) {
+	// Ensure the gateway exchange exists
+	if err := q.rabbitmqClient.EnsureExchange(ctx, GatewayExchangeName, "direct"); err != nil {
+		return nil, err
+	}
+
+	// Ensure the gateway queue exists
+	if err := q.rabbitmqClient.EnsureQueue(ctx, GatewayPushQueueName, nil); err != nil {
+		return nil, err
+	}
+
+	// Bind queue to exchange with routing key "push"
+	if err := q.rabbitmqClient.BindQueue(ctx, GatewayPushQueueName, GatewayExchangeName, "push"); err != nil {
+		return nil, err
+	}
+
+	prefetchCount := q.cfg.Worker.PrefetchCount
+	if prefetchCount == 0 {
+		prefetchCount = 10 // default
+	}
+
+	zap.L().Info("Gateway queue consumer initialized",
+		zap.String("exchange", GatewayExchangeName),
+		zap.String("queue", GatewayPushQueueName),
+	)
+
+	return q.rabbitmqClient.Consume(ctx, GatewayPushQueueName, prefetchCount)
 }

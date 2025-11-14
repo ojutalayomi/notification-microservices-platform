@@ -2,6 +2,7 @@ import json
 import time
 import pika
 from datetime import datetime
+from uuid import uuid4
 import pybreaker
 
 from db import SessionLocal
@@ -82,11 +83,60 @@ def process_email(email_id: str, retry_count: int = 0):
 def callback(ch, method, properties, body):
     try:
         message = json.loads(body)
-        email_id = message["email_id"]
-        retry_count = message.get("retry_count", 0)
+        
+        # Check if this is an API Gateway message or internal retry message
+        if "email_id" in message:
+            # Internal retry message format
+            email_id = message["email_id"]
+            retry_count = message.get("retry_count", 0)
 
-        print(f"\n[worker] Received email job: {email_id} (retry {retry_count})")
-        process_email(email_id, retry_count=retry_count)
+            print(f"\n[worker] Received email job: {email_id} (retry {retry_count})")
+            process_email(email_id, retry_count=retry_count)
+        else:
+            # API Gateway message format: {notification_id, user_id, email, name, template, ...}
+            notification_id = message.get("notification_id")
+            user_id = message.get("user_id")
+            email = message.get("email")
+            template = message.get("template", {})
+            
+            if not email or not template:
+                print(f"[worker] Invalid API Gateway message format: missing email or template")
+                ch.basic_ack(delivery_tag=method.delivery_tag)
+                return
+            
+            # Extract subject and body from template
+            subject = template.get("subject", "Notification")
+            body_content = template.get("body", "You have a new notification")
+            
+            print(f"\n[worker] Received API Gateway notification: {notification_id} for user: {user_id}")
+            
+            # Create email record in database
+            db = SessionLocal()
+            try:
+                new_email = EmailMessage(
+                    id=uuid4(),
+                    user_id=user_id,
+                    to_email=email,
+                    subject=subject,
+                    body=body_content,
+                    status=EmailStatus.queued,
+                    created_at=datetime.utcnow()
+                )
+                
+                db.add(new_email)
+                db.commit()
+                db.refresh(new_email)
+                
+                print(f"[worker] Created email record: {new_email.id}")
+                
+                # Process the email
+                process_email(str(new_email.id), retry_count=0)
+                
+            except Exception as e:
+                print(f"[worker] Error creating email record: {e}")
+                db.rollback()
+            finally:
+                db.close()
 
         ch.basic_ack(delivery_tag=method.delivery_tag)
         print(f"[worker] Message acknowledged\n")
@@ -103,11 +153,20 @@ def start_worker():
 
     connection = get_connection()
     channel = connection.channel()
+    
+    # Declare exchange
+    channel.exchange_declare(exchange="notifications.direct", exchange_type="direct", durable=True)
+    
+    # Declare queue
     channel.queue_declare(queue=QUEUE_NAME, durable=True)
+    
+    # Bind queue to exchange with routing key "email"
+    channel.queue_bind(exchange="notifications.direct", queue=QUEUE_NAME, routing_key="email")
+    
     channel.basic_qos(prefetch_count=1)
     channel.basic_consume(queue=QUEUE_NAME, on_message_callback=callback)
 
-    print(f"[worker] Listening to queue: {QUEUE_NAME}")
+    print(f"[worker] Listening to queue: {QUEUE_NAME} (from notifications.direct exchange)")
     print("[worker] Waiting for emails... Press CTRL+C to exit\n")
 
     try:

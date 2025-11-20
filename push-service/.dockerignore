@@ -29,6 +29,7 @@ tests/
 *.md
 docs/
 !README.md
+!docs/swagger/**
 
 # CI/CD
 .github
@@ -73,7 +74,6 @@ scripts/
 !entrypoint.sh
 
 # Swagger generated docs (will be generated in container)
-docs/swagger/
 
 # Additional exclusions for faster build context
 node_modules/

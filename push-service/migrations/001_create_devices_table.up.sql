@@ -1,4 +1,6 @@
-CREATE TABLE devices (
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+CREATE TABLE IF NOT EXISTS devices (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id VARCHAR(255) NOT NULL,
     token TEXT NOT NULL,
@@ -8,12 +10,12 @@ CREATE TABLE devices (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE INDEX idx_devices_user_id ON devices(user_id);
-CREATE INDEX idx_devices_token ON devices(token);
-CREATE INDEX idx_devices_platform ON devices(platform);
-CREATE INDEX idx_devices_active ON devices(is_active) WHERE is_active = true;
+CREATE INDEX IF NOT EXISTS idx_devices_user_id ON devices(user_id);
+CREATE INDEX IF NOT EXISTS idx_devices_token ON devices(token);
+CREATE INDEX IF NOT EXISTS idx_devices_platform ON devices(platform);
+CREATE INDEX IF NOT EXISTS idx_devices_active ON devices(is_active) WHERE is_active = true;
 
-CREATE TABLE push_notifications (
+CREATE TABLE IF NOT EXISTS push_notifications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     device_id UUID REFERENCES devices(id) ON DELETE SET NULL,
     user_id VARCHAR(255) NOT NULL,
@@ -26,7 +28,7 @@ CREATE TABLE push_notifications (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE INDEX idx_push_notifications_user_id ON push_notifications(user_id);
-CREATE INDEX idx_push_notifications_status ON push_notifications(status);
-CREATE INDEX idx_push_notifications_created_at ON push_notifications(created_at);
-CREATE INDEX idx_push_notifications_device_id ON push_notifications(device_id);
+CREATE INDEX IF NOT EXISTS idx_push_notifications_user_id ON push_notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_push_notifications_status ON push_notifications(status);
+CREATE INDEX IF NOT EXISTS idx_push_notifications_created_at ON push_notifications(created_at);
+CREATE INDEX IF NOT EXISTS idx_push_notifications_device_id ON push_notifications(device_id);

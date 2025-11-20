@@ -30,6 +30,7 @@ import (
 	"syscall"
 	"time"
 
+	_ "push-service/docs/swagger"
 	"push-service/internal/config"
 	"push-service/internal/handlers"
 	"push-service/internal/platform/fcm"

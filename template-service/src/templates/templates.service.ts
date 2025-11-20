@@ -32,6 +32,20 @@ export class TemplatesService {
     return template;
   }
 
+  async findByName(name: string, language: string = 'en'): Promise<Template> {
+    const template = await this.prisma.template.findFirst({
+      where: { name, language, is_active: true },
+      orderBy: { version: 'desc' },
+    });
+
+    if (!template) {
+      throw new NotFoundException(
+        `Active template with name "${name}" and language "${language}" not found`,
+      );
+    }
+    return template;
+  }
+
   async create(dto: CreateTemplateDto): Promise<Template> {
     const latest: Template | null = await this.prisma.template.findFirst({
       where: { name: dto.name, language: dto.language || 'en' },

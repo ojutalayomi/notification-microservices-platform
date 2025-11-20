@@ -69,7 +69,7 @@ export class NotificationsService {
           name: user.name,
           template,
         };
-        await this.rabbitMQService.publishToQueue("email", emailPayload);
+        this.rabbitMQService.publishToQueue("email", emailPayload);
       }
 
       if (
@@ -80,9 +80,9 @@ export class NotificationsService {
           ...basePayload,
           push_token: user.push_token,
           name: user.name,
-          template,
+          template: renderedTemplate,
         };
-        await this.rabbitMQService.publishToQueue("push", pushPayload);
+        this.rabbitMQService.publishToQueue("push", pushPayload);
       }
 
       // 6. Store notification status
@@ -118,7 +118,7 @@ export class NotificationsService {
       this.notificationStore.set(notification_id, failedNotification);
 
       // Send to dead letter queue
-      await this.rabbitMQService.publishToQueue("failed", failedNotification);
+      this.rabbitMQService.publishToQueue("failed", failedNotification);
 
       if (error instanceof HttpException) {
         throw error;
@@ -189,8 +189,27 @@ export class NotificationsService {
 
       const response = await firstValueFrom(this.httpService.get(url));
       return response.data.data;
-    } catch {
-      this.logger.warn(`Template ${template_id} not found, using default`);
+    } catch (error) {
+      // Check if it's a 404 error (template not found)
+      const isNotFound =
+        error?.response?.status === 404 ||
+        error?.status === 404 ||
+        (error instanceof HttpException && error.getStatus() === 404);
+
+      if (isNotFound) {
+        this.logger.warn(
+          `Template ${template_id} not found in Template Service, using default template`,
+        );
+      } else {
+        // Log other errors (network issues, service unavailable, etc.)
+        this.logger.error(
+          `Error fetching template ${template_id} from Template Service: ${error?.message || error}`,
+        );
+        this.logger.warn(
+          `Falling back to default template for ${template_id} due to service error`,
+        );
+      }
+
       // Return a simple default template
       return {
         template_id,

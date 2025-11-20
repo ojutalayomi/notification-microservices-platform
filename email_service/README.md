@@ -35,12 +35,24 @@ SMTP_USER=your-email@gmail.com
 SMTP_PASS=your-app-password
 EMAIL_SENDER=noreply@yourapp.com
 
+# Optional: Alternative SMTP configuration
+# SMTP_PORT=465              # Use SSL/TLS directly (if port 587 is blocked)
+# SMTP_USE_SSL=true         # Force SSL connection
+# SMTP_USE_TLS=true         # Enable STARTTLS (default: true)
+```
 
 **How to get Gmail App Password:**
 1. Go to Google Account → Security
 2. Enable 2-Step Verification
 3. Search "App passwords" and create one
 4. Use that password in `.env`
+
+**SMTP Configuration Options:**
+- **Port 587 (STARTTLS)**: Default, automatically falls back to port 465 if needed
+- **Port 465 (SSL/TLS)**: Direct SSL connection, use if port 587 is blocked
+- **Automatic Fallback**: Service tries multiple connection methods automatically
+
+For detailed SMTP configuration, troubleshooting, and provider-specific settings, see [SMTP_CONFIGURATION.md](../SMTP_CONFIGURATION.md)
 
 ### Step 3: Start Database & RabbitMQ
 
@@ -80,7 +92,7 @@ You should see:
 ### Send a test email
 
 ```bash
-curl -X POST http://localhost:8000/internal/email/queue \
+curl -X POST http://localhost:8000//email/queue \
   -H "Content-Type: application/json" \
   -d '{
     "user_id": "123e4567-e89b-12d3-a456-426614174000",
@@ -108,7 +120,7 @@ curl -X POST http://localhost:8000/internal/email/queue \
 
 3. **Check email status:**
    ```bash
-   curl http://localhost:8000/internal/email/<email-id>
+   curl http://localhost:8000//email/<email-id>
    ```
 
 ### Check RabbitMQ UI
@@ -165,7 +177,10 @@ db.commit()
 ### SMTP errors?
 - Check your SMTP credentials in `.env`
 - For Gmail, use App Password not regular password
-- Try Mailtrap for testing instead
+- Test connectivity: Run `./test-smtp-connectivity.sh` from project root
+- Try alternative port: Set `SMTP_PORT=465` and `SMTP_USE_SSL=true`
+- Check firewall/security group: Ensure outbound port 587/465 is allowed
+- See [SMTP_CONFIGURATION.md](../SMTP_CONFIGURATION.md) for detailed troubleshooting
 
 ### Database connection errors?
 - Make sure PostgreSQL is running: `docker-compose ps`

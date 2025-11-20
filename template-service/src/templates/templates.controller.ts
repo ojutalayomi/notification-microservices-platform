@@ -7,6 +7,19 @@ import { RenderTemplateDto } from './dto/render-template.dto';
 export class TemplatesController {
   constructor(private readonly service: TemplatesService) {}
 
+  @Get('name/:name')
+  async findByName(
+    @Param('name') name: string,
+    @Query('language') language?: string,
+  ) {
+    const data = await this.service.findByName(name, language || 'en');
+    return {
+      success: true,
+      data,
+      message: 'Template fetched successfully',
+    };
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string) {
     const data = await this.service.findOne(id);

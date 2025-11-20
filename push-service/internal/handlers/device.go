@@ -20,16 +20,16 @@ type RegisterDeviceRequest struct {
 // RegisterDeviceResponse represents the device registration response
 // @Description Device registration response
 type RegisterDeviceResponse struct {
-	Message string              `json:"message" example:"Device registered successfully"`
+	Message string                `json:"message" example:"Device registered successfully"`
 	Device  models.DeviceResponse `json:"device"`
 }
 
 // GetUserDevicesResponse represents the user devices response
 // @Description User devices response
 type GetUserDevicesResponse struct {
-	UserID string                `json:"user_id" example:"user123"`
+	UserID  string                  `json:"user_id" example:"user123"`
 	Devices []models.DeviceResponse `json:"devices"`
-	Count   int                  `json:"count" example:"2"`
+	Count   int                     `json:"count" example:"2"`
 }
 
 type DeviceHandler struct {

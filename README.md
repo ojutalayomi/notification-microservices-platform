@@ -214,7 +214,7 @@ Response:
 ### Step 2: Create a Template
 
 ```bash
-curl -X POST http://localhost:4000/api/v1/templates \
+curl -X POST http://localhost:4000/templates \
   -H "Content-Type: application/json" \
   -d '{
     "name": "welcome",

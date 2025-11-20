@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
+	"time"
+
 	"push-service/internal/config"
 	"push-service/internal/models"
 	"push-service/internal/platform/fcm"
 	"push-service/internal/queue"
 	"push-service/internal/repository"
-	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go.uber.org/zap"
@@ -395,8 +397,26 @@ func (s *pushService) ProcessGatewayMessage(ctx context.Context, delivery amqp.D
 		if subject, ok := template["subject"].(string); ok && subject != "" {
 			title = subject
 		}
-		if bodyContent, ok := template["body"].(string); ok && bodyContent != "" {
+		// Template service returns 'html_body', not 'body'
+		if htmlBody, ok := template["html_body"].(string); ok && htmlBody != "" {
+			body = htmlBody
+		} else if bodyContent, ok := template["body"].(string); ok && bodyContent != "" {
 			body = bodyContent
+		}
+
+		// Handle template variable substitution
+		if variables, ok := template["variables"].([]interface{}); ok {
+			if dataVal, ok := gatewayMessage["data"].(map[string]interface{}); ok {
+				for _, varName := range variables {
+					if varNameStr, ok := varName.(string); ok {
+						if value, ok := dataVal[varNameStr].(string); ok {
+							placeholder := "{{" + varNameStr + "}}"
+							body = strings.ReplaceAll(body, placeholder, value)
+							title = strings.ReplaceAll(title, placeholder, value)
+						}
+					}
+				}
+			}
 		}
 	}
 

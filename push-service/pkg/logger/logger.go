@@ -37,6 +37,7 @@ func InitGlobal(level, format string) error {
 		return err
 	}
 	globalLogger = logger
+	zap.ReplaceGlobals(logger)
 	return nil
 }
 

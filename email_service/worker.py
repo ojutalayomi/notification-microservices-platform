@@ -106,9 +106,23 @@ def callback(ch, method, properties, body):
             
             # Extract subject and body from template
             subject = template.get("subject", "Notification")
-            body_content = template.get("body", "You have a new notification")
+            # Template service returns 'html_body', not 'body'
+            body_content = template.get("html_body") or template.get("body", "You have a new notification")
+            
+            # Get template variables and data for substitution
+            template_variables = template.get("variables", [])
+            notification_data = message.get("data", {})
+            
+            # Substitute template variables (e.g., {{name}} -> actual value)
+            if template_variables and notification_data:
+                for var_name in template_variables:
+                    placeholder = f"{{{{{var_name}}}}}"
+                    value = notification_data.get(var_name, "")
+                    body_content = body_content.replace(placeholder, str(value))
+                    subject = subject.replace(placeholder, str(value))
             
             print(f"\n[worker] Received API Gateway notification: {notification_id} for user: {user_id}")
+            print(f"[worker] Template: {template.get('name', 'unknown')}, Subject: {subject}")
             
             # Create email record in database
             db = SessionLocal()

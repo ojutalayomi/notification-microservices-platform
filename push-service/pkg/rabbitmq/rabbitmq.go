@@ -116,11 +116,11 @@ func (r *RabbitMQClient) EnsureQueue(ctx context.Context, name string, args amqp
 // BindQueue binds a queue to an exchange
 func (r *RabbitMQClient) BindQueue(ctx context.Context, queueName, exchangeName, routingKey string) error {
 	return r.channel.QueueBind(
-		queueName,   // queue name
-		routingKey,  // routing key
+		queueName,    // queue name
+		routingKey,   // routing key
 		exchangeName, // exchange
-		false,       // no-wait
-		nil,         // arguments
+		false,        // no-wait
+		nil,          // arguments
 	)
 }
 
@@ -198,12 +198,12 @@ func (r *RabbitMQClient) Consume(ctx context.Context, queueName string, prefetch
 
 	msgs, err := r.channel.Consume(
 		queueName, // queue
-		"",         // consumer
-		false,      // auto-ack (we'll manually ack)
-		false,      // exclusive
-		false,      // no-local
-		false,      // no-wait
-		nil,        // args
+		"",        // consumer
+		false,     // auto-ack (we'll manually ack)
+		false,     // exclusive
+		false,     // no-local
+		false,     // no-wait
+		nil,       // args
 	)
 
 	if err != nil {
@@ -215,9 +215,17 @@ func (r *RabbitMQClient) Consume(ctx context.Context, queueName string, prefetch
 
 // QueueLength returns the number of messages in a queue
 func (r *RabbitMQClient) QueueLength(ctx context.Context, queueName string) (int64, error) {
-	queue, err := r.channel.QueueInspect(queueName)
+	// Use QueueDeclare with Passive: true as QueueInspect is deprecated.
+	queue, err := r.channel.QueueDeclare(
+		queueName, // queue name
+		false,     // durable (unknown, as we're just inspecting)
+		false,     // autoDelete
+		false,     // exclusive
+		true,      // passive: true, only check if the queue exists and inspect it
+		nil,       // args
+	)
 	if err != nil {
-		return 0, fmt.Errorf("failed to inspect queue: %w", err)
+		return 0, fmt.Errorf("failed to inspect queue (does it exist?): %w", err)
 	}
 	return int64(queue.Messages), nil
 }
@@ -231,4 +239,3 @@ func (r *RabbitMQClient) Ack(tag uint64, multiple bool) error {
 func (r *RabbitMQClient) Nack(tag uint64, multiple bool, requeue bool) error {
 	return r.channel.Nack(tag, multiple, requeue)
 }
-

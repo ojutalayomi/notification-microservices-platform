@@ -25,6 +25,11 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags '-w -s' -o main ./cmd/server
 
+# Install migrate CLI for runtime database migrations (with Postgres driver)
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.17.0
+
 # Final stage
 FROM alpine:latest
 
@@ -40,13 +45,15 @@ WORKDIR /app
 # Copy binary and config files
 COPY --from=builder /app/main .
 COPY --from=builder /app/config.yaml .
+COPY --from=builder /app/migrations ./migrations
 
 # Copy service account file if it exists (optional, for FCM)
 COPY --from=builder /app/service-account.json* ./
 COPY entrypoint.sh ./entrypoint.sh
+COPY --from=builder /go/bin/migrate /usr/local/bin/migrate
 
 # Change ownership to non-root user
-RUN chown -R appuser:appuser /app && chmod +x /app/entrypoint.sh
+RUN chown -R appuser:appuser /app && chmod +x /app/entrypoint.sh && chmod +x /usr/local/bin/migrate
 
 # Switch to non-root user
 USER appuser

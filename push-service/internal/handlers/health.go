@@ -24,6 +24,10 @@ type HealthResponse struct {
 // @Success 200 {object} HealthResponse
 // @Router /health [get]
 func HealthCheck(c *gin.Context) {
+	if c.Request.Method == http.MethodHead {
+		c.Status(http.StatusOK)
+		return
+	}
 	c.JSON(http.StatusOK, HealthResponse{
 		Status:    "healthy",
 		Timestamp: time.Now().UTC().Format(time.RFC3339),

@@ -1,4 +1,4 @@
-# HNG Stage Four - Notification Microservices Platform
+Notification Microservices Platform
 
 A distributed microservices platform for sending notifications via email and push notifications. The system is fully dockerized and can be started with a single command.
 

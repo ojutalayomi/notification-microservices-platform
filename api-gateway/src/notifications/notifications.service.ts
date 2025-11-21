@@ -80,7 +80,7 @@ export class NotificationsService {
           ...basePayload,
           push_token: user.push_token,
           name: user.name,
-          template: renderedTemplate,
+          template,
         };
         this.rabbitMQService.publishToQueue("push", pushPayload);
       }

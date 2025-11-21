@@ -13,7 +13,7 @@ COPY go.mod go.sum ./
 
 # Download dependencies with cache mount (BuildKit feature for faster builds)
 # Disable checksum verification for faster downloads (re-enabled in build step)
-RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod \
+RUN --mount=type=cache,id=cache-go-mod-cache,target=/go/pkg/mod \
     GOSUMDB=off go mod download
 
 # Copy source code
@@ -21,13 +21,13 @@ COPY . .
 
 # Build with build cache mount for faster subsequent builds
 # Re-enable checksum verification during build for security
-RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod \
-    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build \
+RUN --mount=type=cache,id=cache-go-mod-cache,target=/go/pkg/mod \
+    --mount=type=cache,id=cache-go-build-cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags '-w -s' -o main ./cmd/server
 
 # Install migrate CLI for runtime database migrations (with Postgres driver)
-RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod \
-    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build \
+RUN --mount=type=cache,id=cache-go-mod-cache,target=/go/pkg/mod \
+    --mount=type=cache,id=cache-go-build-cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.17.0
 
 # Final stage

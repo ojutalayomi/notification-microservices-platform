@@ -18,7 +18,7 @@ ENV NPM_CONFIG_FETCH_RETRY_FACTOR=10
 ENV NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=10000
 
 COPY package*.json ./
-RUN --mount=type=cache,id=npm-cache,target=/root/.npm \
+RUN --mount=type=cache,id=cache-npm-cache,target=/root/.npm \
     npm ci || (sleep 5 && npm ci) || (sleep 10 && npm ci)
 
 FROM base AS builder
@@ -47,7 +47,7 @@ ENV NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=10000
 WORKDIR /app
 
 COPY package*.json ./
-RUN --mount=type=cache,id=npm-cache,target=/root/.npm \
+RUN --mount=type=cache,id=cache-npm-cache,target=/root/.npm \
     npm ci --omit=dev || (sleep 5 && npm ci --omit=dev) || (sleep 10 && npm ci --omit=dev)
 
 COPY --from=builder /app/dist ./dist
